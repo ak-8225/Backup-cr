@@ -1,8 +1,8 @@
 {
   "6370309143": {
     "collegeOrder": [
-      "user-0",
       "user-1",
+      "user-0",
       "user-2",
       "user-3",
       "user-4",
@@ -20,6 +20,10 @@
     "notes": {
       "user-14": [
         "Zero application fee of 0% for MSc Operations Management & Business Analytics at University of Salford."
+      ],
+      "user-0": [],
+      "user-2": [
+        "No application fee of 0 for Kingston's MSc in Business Analytics program."
       ]
     }
   }

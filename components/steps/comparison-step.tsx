@@ -1377,23 +1377,6 @@ export default function ComparisonStep({
           </CardContent>
         </Card>
 
-        {/* Next Steps Section (replaces Data Sources & Methodology) */}
-        <Card className="p-4 bg-blue-50/50 border-blue-200">
-          <h4 className="font-semibold text-blue-900 mb-2">🚀 Next Steps</h4>
-          <div className="mb-2">
-            <select
-              className="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
-              value={selectedNextStep}
-              onChange={e => onNextStepChange(e.target.value)}
-            >
-              <option value="" disabled>Select your next step…</option>
-              {nextStepsOptions.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </div>
-          <p className="text-xs text-blue-600 mt-2">Choose your next action to move forward in your application journey.</p>
-        </Card>
       </motion.div>
     </TooltipProvider>
   )
