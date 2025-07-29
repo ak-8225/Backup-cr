@@ -268,6 +268,20 @@ function toRoman(num: number) {
   return romans[num] || (num + 1).toString();
 }
 
+// Add this mapping at the top of the file or near uspColumnNames
+const uspCategoryLabels: string[] = [
+  "Job Insights",
+  "PR/Settlement",
+  "India Return",
+  "Research/PhD",
+  "Cost & Budget",
+  "Research Opportunities",
+  "Job Opportunities",
+  "Alumni Network",
+  "Location",
+  "Education Quality"
+];
+
 export default function ResultsStep({
   pageVariants,
   pageTransition,
@@ -718,12 +732,58 @@ export default function ResultsStep({
     if (reorderedUSPs[college.id]) {
       return reorderedUSPs[college.id];
     }
-    
     // Check if we have cached CSV USPs for this college
     if (csvUSPs[college.id]) {
+      // Filter USPs based on userProfile selections (Q1 + Q2)
+      if (userProfile && (userProfile.careerAspirations || userProfile.collegeParameters)) {
+        // Map Q1 and Q2 values to USP column names
+        const uspColumnNames = [
+          "Get a job",
+          "Get a PR/settle in abroad",
+          "Return to India",
+          "Research/PhD etc.",
+          "Cost/Budget",
+          "Research opportunities",
+          "Job opportunities/Recruits",
+          "Alum network",
+          "Locations",
+          "Quality of Education"
+        ];
+        // Q1 mapping (first 4)
+        const q1Map = [
+          'get_job',
+          'get_pr',
+          'return_india',
+          'research_phd',
+        ];
+        // Q2 mapping (next 6)
+        const q2Map = [
+          'cost_budget',
+          'research_opportunities',
+          'job_opportunities',
+          'alum_network',
+          'locations',
+          'quality_education',
+        ];
+        // Build allowed indices from userProfile
+        const allowedIndices: number[] = [];
+        if (userProfile.careerAspirations) {
+          userProfile.careerAspirations.forEach(val => {
+            const idx = q1Map.indexOf(val);
+            if (idx !== -1) allowedIndices.push(idx);
+          });
+        }
+        if (userProfile.collegeParameters) {
+          userProfile.collegeParameters.forEach(val => {
+            const idx = q2Map.indexOf(val);
+            if (idx !== -1) allowedIndices.push(idx + 4);
+          });
+        }
+        // Only show USPs at allowed indices
+        return csvUSPs[college.id].filter((_, idx) => allowedIndices.includes(idx));
+      }
       return csvUSPs[college.id];
     }
-    
     // Return placeholder message if not loaded yet
     return [`Loading USPs for ${college.name}...`];
   }
@@ -1636,47 +1696,61 @@ export default function ResultsStep({
                                                 {getAllUSPsAndNotes(college).length === 0 ? (
                                                   <div className="text-gray-500 text-sm">No USP data available for this college.</div>
                                                 ) : (
-                                                  getAllUSPsAndNotes(college).map((item, globalIdx, arr) => (
-                                                    <div key={globalIdx + '-' + item.type} className="flex items-start text-base text-gray-900 font-medium group mb-1 bg-white rounded px-2 py-1 hover:shadow border border-gray-100">
-                                                      <span className="flex-1">
-                                                        <span className="mr-2 text-gray-500 font-semibold">({toRoman(globalIdx)})</span>
-                                                        {item.value}
-                                                      </span>
-                                                      <select
-                                                        className="mr-2 text-xs rounded border border-gray-300 px-1 py-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
-                                                        value={globalIdx}
-                                                        onChange={e => handleGlobalUSPOrderChange(college.id, globalIdx, Number(e.target.value))}
-                                                        style={{ width: 40 }}
-                                                        aria-label="Set USP order"
-                                                      >
-                                                        {Array.from({ length: arr.length }).map((_, idx) => (
-                                                          <option key={idx} value={idx}>{toRoman(idx)}</option>
-                                                        ))}
-                                                      </select>
-                                                      <button
-                                                        className="ml-2 text-xs text-red-500 hover:text-red-700 opacity-70 group-hover:opacity-100 transition"
-                                                        title="Remove USP"
-                                                        onClick={() => {
-                                                          if (item.type === 'usp') {
-                                                            handleDeleteUSP(college.id, item.idx);
-                                                          } else {
-                                                            setSavedNotes((prev: Record<string, string[]>) => {
-                                                              const updated = {
-                                                                ...prev,
-                                                                [college.id]: prev[college.id]?.filter((_: any, idx: number) => idx !== item.idx) || []
-                                                              };
-                                                              persistUserCollegeData(orderedColleges, updated);
-                                                              return updated;
-                                                            });
-                                                          }
-                                                        }}
-                                                        aria-label="Remove USP"
-                                                        type="button"
-                                                      >
-                                                        ✖️
-                                                      </button>
-                                                    </div>
-                                                  ))
+                                                  getAllUSPsAndNotes(college).map((item, globalIdx, arr) => {
+                                                    // Only add category for USPs (not notes)
+                                                    let category = '';
+                                                    if (item.type === 'usp') {
+                                                      // Find the index of this USP in the full CSV USPs for this college
+                                                      const uspIdx = (csvUSPs[college.id] || []).indexOf(item.value);
+                                                      category = uspCategoryLabels[uspIdx] || '';
+                                                    }
+                                                    return (
+                                                      <div key={globalIdx + '-' + item.type} className="flex flex-row items-center text-base text-gray-900 font-medium group mb-1 bg-white rounded px-2 py-1 hover:shadow border border-gray-100">
+                                                        {/* Left: Category */}
+                                                        <div className="min-w-[140px] max-w-[180px] pr-4 text-right">
+                                                          {category && <div className="font-extrabold text-xs text-gray-700 whitespace-nowrap">{category}</div>}
+                                                        </div>
+                                                        {/* Right: USP content */}
+                                                        <div className="flex-1 flex items-center">
+                                                          <span className="mr-2 text-gray-500 font-semibold">({toRoman(globalIdx)})</span>
+                                                          <span className="text-gray-800 flex-1">{item.value}</span>
+                                                          <select
+                                                            className="mr-2 text-xs rounded border border-gray-300 px-1 py-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                                            value={globalIdx}
+                                                            onChange={e => handleGlobalUSPOrderChange(college.id, globalIdx, Number(e.target.value))}
+                                                            style={{ width: 40 }}
+                                                            aria-label="Set USP order"
+                                                          >
+                                                            {Array.from({ length: arr.length }).map((_, idx) => (
+                                                              <option key={idx} value={idx}>{toRoman(idx)}</option>
+                                                            ))}
+                                                          </select>
+                                                          <button
+                                                            className="ml-2 text-xs text-red-500 hover:text-red-700 opacity-70 group-hover:opacity-100 transition"
+                                                            title="Remove USP"
+                                                            onClick={() => {
+                                                              if (item.type === 'usp') {
+                                                                handleDeleteUSP(college.id, item.idx);
+                                                              } else {
+                                                                setSavedNotes((prev: Record<string, string[]>) => {
+                                                                  const updated = {
+                                                                    ...prev,
+                                                                    [college.id]: prev[college.id]?.filter((_: any, idx: number) => idx !== item.idx) || []
+                                                                  };
+                                                                  persistUserCollegeData(orderedColleges, updated);
+                                                                  return updated;
+                                                                });
+                                                              }
+                                                            }}
+                                                            aria-label="Remove USP"
+                                                            type="button"
+                                                          >
+                                                            ✖️
+                                                          </button>
+                                                        </div>
+                                                      </div>
+                                                    );
+                                                  })
                                                 )}
                                               </div>
                                               {noteRephrasing[college.id] && (
