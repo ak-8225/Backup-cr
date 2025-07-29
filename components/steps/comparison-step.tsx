@@ -131,7 +131,7 @@ export default function ComparisonStep({
   useEffect(() => {
     const uniqueCities = Array.from(new Set(selectedColleges.map(c => c.city).filter(Boolean)));
     uniqueCities.forEach(async (city) => {
-      if (!cityCosts[city]) {
+      if (typeof city === 'string' && city && !cityCosts[city]) {
         // Use a real college and country for better results if available
         const collegeForCity = selectedColleges.find(c => c.city === city);
         const res = await fetch('/api/get-comparison-metrics', {
@@ -153,7 +153,7 @@ export default function ComparisonStep({
           const transportation = metricsText.match(/Transportation Costs.*?:\s*([^\n]+)/i)?.[1] || "";
           setCityCosts(prev => ({
             ...prev,
-            [city]: { living, accommodation, transportation }
+            ...(typeof city === 'string' && city ? { [city]: { living, accommodation, transportation } } : {})
           }));
         }
       }
@@ -1137,12 +1137,6 @@ export default function ComparisonStep({
           </Button>
           <div className="flex gap-3 items-center">
             
-            <Button
-              onClick={() => onNext("summary")}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 hover:scale-105 transition-all duration-300"
-            >
-              View Summary
-            </Button>
             <Button
               onClick={() => onNext("initial-form")}
               variant="destructive"

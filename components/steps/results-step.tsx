@@ -1368,13 +1368,6 @@ export default function ResultsStep({
               >
                 Compare Selected ({selectedForComparison.length})
               </Button>
-              <Button
-                onClick={() => onNext("summary")}
-                disabled={orderedColleges.filter((c) => c.liked).length === 0}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 hover:scale-105 transition-all duration-300"
-              >
-                View Summary ({orderedColleges.filter((c) => c.liked).length} Liked)
-              </Button>
             </div>
             {/* Save/Reset Order below comparison controls */}
             <div className="flex flex-row gap-2 mt-2">
@@ -1913,14 +1906,6 @@ export default function ResultsStep({
                   className="bg-white hover:bg-green-50"
                 >
                   Compare Selected ({selectedForComparison.length})
-                </Button>
-                <Button
-                  onClick={() => onNext("summary")}
-                  disabled={orderedColleges.filter((c) => c.liked).length === 0}
-                  size="sm"
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  View Summary ({orderedColleges.filter((c) => c.liked).length} Liked)
                 </Button>
               </div>
             </div>
