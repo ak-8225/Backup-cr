@@ -1703,6 +1703,9 @@ export default function ResultsStep({
                                                       // Find the index of this USP in the full CSV USPs for this college
                                                       const uspIdx = (csvUSPs[college.id] || []).indexOf(item.value);
                                                       category = uspCategoryLabels[uspIdx] || '';
+                                                    } else if (item.type === 'note') {
+                                                      // For notes added via "Add a fact" feature, show "Key Insights" as category
+                                                      category = 'Key Insights';
                                                     }
                                                     return (
                                                       <div key={globalIdx + '-' + item.type} className="flex flex-row items-center text-base text-gray-900 font-medium group mb-1 bg-white rounded px-2 py-1 hover:shadow border border-gray-100">
