@@ -25,14 +25,14 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { phone, collegeOrder, notes } = body;
+    const { phone, collegeOrder, notes, likedColleges } = body;
     
     if (!phone) {
       return NextResponse.json({ error: "Phone number is required" }, { status: 400 });
     }
     
     // Save data to Firebase
-    const result = await saveUserCollegeData(phone, collegeOrder, notes);
+    const result = await saveUserCollegeData(phone, collegeOrder, notes, likedColleges);
     
     if (result.success) {
       return NextResponse.json({ message: "Data saved successfully" });

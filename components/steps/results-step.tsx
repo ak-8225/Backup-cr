@@ -420,9 +420,18 @@ export default function ResultsStep({
           // Reorder colleges based on saved order
           const idToCollege = Object.fromEntries(colleges.map(c => [c.id, c]));
           const ordered = data.collegeOrder.map((id: string) => idToCollege[id]).filter(Boolean);
+          
           // Add any new colleges not in saved order
           const missing = colleges.filter(c => !data.collegeOrder.includes(c.id));
-          setOrderedColleges([...ordered, ...missing]);
+          
+          // Restore liked status from likedColleges
+          const likedCollegesSet = new Set(data.likedColleges || []);
+          const orderedWithLikedStatus = [...ordered, ...missing].map(college => ({
+            ...college,
+            liked: likedCollegesSet.has(college.id)
+          }));
+          
+          setOrderedColleges(orderedWithLikedStatus);
         }
         if (data.notes && typeof data.notes === 'object') {
           // Convert notes to savedNotes format (array of notes per college)
@@ -485,10 +494,13 @@ export default function ResultsStep({
     return `${score}/14 matches`;
   };
 
-  // Helper to persist order and notes
+  // Helper to persist order, notes and liked colleges
   const persistUserCollegeData = (order: College[], notesObj: { [collegeId: string]: string[] }) => {
     const phone = userProfile?.phone;
     if (!phone) return;
+    
+    // Get liked college IDs
+    const likedColleges = order.filter(c => c.liked).map(c => c.id);
     
     // Save to Firebase
     fetch('/api/firebase-college-data', {
@@ -497,7 +509,8 @@ export default function ResultsStep({
       body: JSON.stringify({
         phone,
         collegeOrder: order.map(c => c.id),
-        notes: Object.fromEntries(Object.entries(notesObj).map(([k, v]) => [k, v]))
+        notes: Object.fromEntries(Object.entries(notesObj).map(([k, v]) => [k, v])),
+        likedColleges
       })
     })
     .then(res => {
@@ -1328,19 +1341,29 @@ export default function ResultsStep({
     setIsDialogOpen(true)
   }
 
-  // Like button handler: update liked status in orderedColleges only, do not reorder
+  // Like button handler: update liked status in orderedColleges and persist to Firebase
   const handleLikeToggle = (collegeId: string) => {
-    setOrderedColleges(prev => prev.map(college =>
-      college.id === collegeId ? { ...college, liked: !college.liked } : college
-    ));
+    setOrderedColleges(prev => {
+      const updatedColleges = prev.map(college =>
+        college.id === collegeId ? { ...college, liked: !college.liked } : college
+      );
+      
+      // Persist changes to Firebase
+      setTimeout(() => {
+        persistUserCollegeData(updatedColleges, savedNotes);
+      }, 100);
+      
+      return updatedColleges;
+    });
   };
   // Compare button handler: update selectedForComparison only
   const handleComparisonToggle = (collegeId: string) => {
-    setSelectedForComparison(prev =>
-      prev.includes(collegeId)
-        ? prev.filter(id => id !== collegeId)
-        : [...prev, collegeId]
-    );
+    // Create a new array to avoid TypeScript issues
+    const newSelection = selectedForComparison.includes(collegeId) 
+      ? selectedForComparison.filter(id => id !== collegeId)
+      : [...selectedForComparison, collegeId];
+    
+    setSelectedForComparison(newSelection);
   };
 
   const handleSelectAll = () => {
