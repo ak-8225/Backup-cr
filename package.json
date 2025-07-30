@@ -46,6 +46,7 @@
     "cmdk": "latest",
     "date-fns": "4.1.0",
     "embla-carousel-react": "latest",
+    "firebase": "^12.0.0",
     "framer-motion": "latest",
     "html2canvas": "latest",
     "html2pdf.js": "^0.10.3",

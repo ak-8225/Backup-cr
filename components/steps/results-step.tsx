@@ -363,8 +363,15 @@ export default function ResultsStep({
   useEffect(() => {
     const phone = userProfile?.phone;
     if (!phone) return;
-    fetch(`/api/user-college-data?phone=${encodeURIComponent(phone)}`)
-      .then(res => res.json())
+    
+    // Try Firebase first, fall back to old API endpoint if Firebase fails
+    fetch(`/api/firebase-college-data?phone=${encodeURIComponent(phone)}`)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Firebase fetch failed');
+        }
+        return res.json();
+      })
       .then(data => {
         if (Array.isArray(data.collegeOrder) && data.collegeOrder.length > 0) {
           // Reorder colleges based on saved order
@@ -383,7 +390,31 @@ export default function ResultsStep({
           setSavedNotes(notesObj);
         }
       })
-      .catch(() => {});
+      .catch((error) => {
+        console.log("Firebase fetch error, falling back to legacy API:", error);
+        // Fall back to legacy API
+        fetch(`/api/user-college-data?phone=${encodeURIComponent(phone)}`)
+          .then(res => res.json())
+          .then(data => {
+            if (Array.isArray(data.collegeOrder) && data.collegeOrder.length > 0) {
+              // Reorder colleges based on saved order
+              const idToCollege = Object.fromEntries(colleges.map(c => [c.id, c]));
+              const ordered = data.collegeOrder.map((id: string) => idToCollege[id]).filter(Boolean);
+              // Add any new colleges not in saved order
+              const missing = colleges.filter(c => !data.collegeOrder.includes(c.id));
+              setOrderedColleges([...ordered, ...missing]);
+            }
+            if (data.notes && typeof data.notes === 'object') {
+              // Convert notes to savedNotes format (array of notes per college)
+              const notesObj: { [collegeId: string]: string[] } = {};
+              Object.entries(data.notes).forEach(([collegeId, note]) => {
+                notesObj[collegeId] = Array.isArray(note) ? note : [note];
+              });
+              setSavedNotes(notesObj);
+            }
+          })
+          .catch((err) => console.error("Legacy API failed too:", err));
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile?.phone, colleges.length]);
 
@@ -391,15 +422,36 @@ export default function ResultsStep({
   const persistUserCollegeData = (order: College[], notesObj: { [collegeId: string]: string[] }) => {
     const phone = userProfile?.phone;
     if (!phone) return;
-    fetch('/api/user-college-data', {
+    
+    // Save to Firebase
+    fetch('/api/firebase-college-data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         phone,
-        college_order: order.map(c => c.id), // for Supabase
-        collegeOrder: order.map(c => c.id),  // for local file
+        collegeOrder: order.map(c => c.id),
         notes: Object.fromEntries(Object.entries(notesObj).map(([k, v]) => [k, v]))
       })
+    })
+    .then(res => {
+      if (!res.ok) {
+        throw new Error('Firebase save failed');
+      }
+      console.log('Data saved to Firebase successfully');
+    })
+    .catch(error => {
+      console.error('Firebase save error, trying legacy API:', error);
+      // Fall back to legacy API
+      fetch('/api/user-college-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone,
+          college_order: order.map(c => c.id), // for Supabase
+          collegeOrder: order.map(c => c.id),  // for local file
+          notes: Object.fromEntries(Object.entries(notesObj).map(([k, v]) => [k, v]))
+        })
+      });
     });
   };
 
