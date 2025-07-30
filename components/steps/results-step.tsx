@@ -268,6 +268,48 @@ function toRoman(num: number) {
   return romans[num] || (num + 1).toString();
 }
 
+// Helper function to format career aspirations for display
+function formatCareerAspirations(aspirations: string[]): string {
+  if (!aspirations || aspirations.length === 0) return '';
+  
+  const aspirationLabels: { [key: string]: string } = {
+    'get_job': 'Get a job',
+    'get_pr': 'Get PR/settle in abroad',
+    'return_india': 'Return to India',
+    'research_phd': 'Research/PhD etc.'
+  };
+  
+  const formatted = aspirations.map(asp => aspirationLabels[asp] || asp);
+  
+  if (formatted.length === 1) return formatted[0];
+  if (formatted.length === 2) return `${formatted[0]}, ${formatted[1]}`;
+  
+  const last = formatted.pop();
+  return `${formatted.join(', ')}, and ${last}`;
+}
+
+// Helper function to format college parameters for display
+function formatCollegeParameters(parameters: string[]): string {
+  if (!parameters || parameters.length === 0) return '';
+  
+  const parameterLabels: { [key: string]: string } = {
+    'cost_budget': 'Cost/Budget',
+    'research_opportunities': 'Research opportunities',
+    'job_opportunities': 'Job opportunities/Recruits',
+    'alum_network': 'Alum network',
+    'locations': 'Locations',
+    'quality_education': 'Quality of Education'
+  };
+  
+  const formatted = parameters.map(param => parameterLabels[param] || param);
+  
+  if (formatted.length === 1) return formatted[0];
+  if (formatted.length === 2) return `${formatted[0]}, ${formatted[1]}`;
+  
+  const last = formatted.pop();
+  return `${formatted.join(', ')}, and ${last}`;
+}
+
 // Add this mapping at the top of the file or near uspColumnNames
 const uspCategoryLabels: string[] = [
   "Job Insights",
@@ -1525,7 +1567,7 @@ export default function ResultsStep({
 
         <div className="text-center mb-8 px-2 sm:px-0">
           <h1
-            className="text-4xl md:text-5xl font-extrabold mb-2 tracking-tight drop-shadow-lg"
+            className="text-3xl md:text-4xl lg:text-5xl font-bold text-center mb-4"
             style={{
               fontFamily: 'Plus Jakarta Sans, Plus Jakarta, sans-serif',
               color: '#2563eb',
@@ -1533,27 +1575,28 @@ export default function ResultsStep({
               lineHeight: 1.15,
             }}
           >
-            College Recommendations for {userName || userProfile?.name || "Student"}
+            Personalised college recommendations for {userName || userProfile?.name || "Student"}
           </h1>
           <p
-            className="text-lg md:text-xl text-gray-700 max-w-2xl mx-auto flex flex-wrap items-center justify-center gap-2 font-normal"
+            className="text-lg md:text-xl text-gray-700 max-w-4xl mx-auto flex flex-col items-center justify-center gap-2 font-normal text-center"
             style={{ fontFamily: 'Inter, sans-serif', lineHeight: 1.5 }}
           >
-            <span>Based on your counseling profile and your selected priorities:</span>
-            {Array.isArray(userProfile?.priorities) && userProfile.priorities.length > 0 && (
-              <span className="flex flex-wrap items-center gap-2 ml-2">
-                {(userProfile.priorities || []).map((priority: string, idx: number, arr: string[]) => (
-                  <span
-                    key={priority}
-                    className="font-semibold md:text-lg text-[#bfa100] px-2 py-1 rounded-lg bg-[#fffbe6] shadow-sm border border-[#ffe066]"
-                    style={{ fontFamily: 'Inter, sans-serif', marginRight: idx < arr.length - 1 ? '0.5rem' : 0 }}
-                  >
-                    {formatPriority(priority)}
-                    {idx < arr.length - 1 && <span className="mx-1 text-gray-400">·</span>}
-                  </span>
-                ))}
-              </span>
-            )}
+            <span>
+              {(() => {
+                const careerGoals = formatCareerAspirations(userProfile?.careerAspirations || []);
+                const focusAreas = formatCollegeParameters(userProfile?.collegeParameters || []);
+                
+                if (careerGoals && focusAreas) {
+                  return <>Built around your goals — <strong>{careerGoals}</strong>, and keeping in mind your focus areas like <strong>{focusAreas}</strong>.</>;
+                } else if (careerGoals) {
+                  return <>Built around your goals — <strong>{careerGoals}</strong>.</>;
+                } else if (focusAreas) {
+                  return <>Keeping in mind your focus areas like <strong>{focusAreas}</strong>.</>;
+                } else {
+                  return 'Based on your counseling profile and selected priorities.';
+                }
+              })()}
+            </span>
           </p>
         </div>
 
@@ -1565,19 +1608,19 @@ export default function ResultsStep({
               style={{ position: 'sticky', top: '6rem', height: 'fit-content', minWidth: '320px', maxWidth: '380px', marginRight: '1.2rem', marginLeft: '0.2rem', zIndex: 30 }}
             >
               <button
-                className="w-full font-extrabold text-blue-800 text-lg tracking-wide drop-shadow-sm uppercase bg-gradient-to-br from-blue-50 via-white to-blue-100 border border-blue-200 rounded-2xl shadow-2xl p-3 mt-2 hover:bg-blue-100 transition text-center"
-                style={{ boxShadow: '0 8px 36px 0 rgba(37,99,235,0.10)', marginLeft: '1vw' }}
+                className="w-[300px] max-w-[360px] font-extrabold text-blue-800 text-lg tracking-wide drop-shadow-sm uppercase bg-gradient-to-br from-blue-50 via-white to-blue-100 border border-blue-200 rounded-2xl shadow-2xl p-3 mt-2 hover:bg-blue-100 transition text-center"
+                style={{ boxShadow: '0 8px 36px 0 rgba(37,99,235,0.10)' }}
                 onClick={() => setJumpOpen(o => !o)}
                 aria-expanded={jumpOpen}
                 aria-controls="jump-college-list"
               >
-                Your College Navigator {jumpOpen ? '▲' : '▼'}
+                Your Recommended Colleges {jumpOpen ? '▲' : '▼'}
               </button>
               {jumpOpen && (
                 <div
                   id="jump-college-list"
                   className="w-[300px] max-w-[360px] max-h-[80vh] overflow-y-auto bg-gradient-to-br from-blue-50 via-white to-blue-100 border border-blue-200 rounded-2xl shadow-2xl p-4 mt-2"
-                  style={{ boxShadow: '0 8px 36px 0 rgba(37,99,235,0.10)', marginLeft: '1vw' }}
+                  style={{ boxShadow: '0 8px 36px 0 rgba(37,99,235,0.10)' }}
                 >
                     <Droppable droppableId="jump-college-list">
                       {(provided) => (

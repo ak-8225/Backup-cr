@@ -927,6 +927,9 @@ export default function InitialFormStep({
                   </span>
                   <svg className={`w-4 h-4 ml-2 transition-transform ${careerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                 </button>
+                {(!formData.careerAspirations || formData.careerAspirations.length === 0) && (
+                  <div className="text-red-500 text-xs mt-1">This is a mandatory field</div>
+                )}
                 {careerOpen && (
                   <div className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto p-2 animate-fade-in">
                     {CAREER_OPTIONS.map(opt => (
@@ -962,6 +965,9 @@ export default function InitialFormStep({
                   </span>
                   <svg className={`w-4 h-4 ml-2 transition-transform ${paramOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                 </button>
+                {(!formData.collegeParameters || formData.collegeParameters.length === 0) && (
+                  <div className="text-red-500 text-xs mt-1">This is a mandatory field</div>
+                )}
                 {paramOpen && (
                   <div className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto p-2 animate-fade-in">
                     {PARAM_OPTIONS.map(opt => (
@@ -1020,7 +1026,7 @@ export default function InitialFormStep({
               <Button
                 onClick={fetchUserData}
                 className="w-full h-14 bg-[#443eff] hover:bg-[#3730d9] text-white text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!formData.phoneNumber || isLoading}
+                disabled={!formData.phoneNumber || isLoading || (!formData.careerAspirations || formData.careerAspirations.length === 0) || (!formData.collegeParameters || formData.collegeParameters.length === 0)}
               >
                 {isLoading ? (
                   <>
