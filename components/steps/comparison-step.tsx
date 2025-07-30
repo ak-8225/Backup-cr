@@ -613,17 +613,91 @@ export default function ComparisonStep({
     if (type === "percentage_higher_better" || type === "score_higher_better") {
       return Number.parseFloat(value.replace(/[^\d.]/g, "")) === bestValue
     } else if (type === "currency_lower_better") {
-      // Only highlight the single minimum value (first occurrence)
-      const numericValues = values.map((v) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
-      const min = Math.min(...numericValues.filter((n) => !isNaN(n) && n > 0));
-      const idx = numericValues.findIndex((n) => n === min);
-      return Number.parseFloat(value.replace(/[^\d.]/g, "")) === min && values.indexOf(value) === idx;
+      // For tuition fees (values with "L per year" format), extract the lakhs value
+      if (value.includes("L per year")) {
+        const numericValues = values
+          .filter(v => v.includes("L per year"))
+          .map(v => {
+            const match = v.match(/₹(\d+\.?\d*)L/);
+            return match ? parseFloat(match[1]) : Infinity;
+          });
+        
+        if (numericValues.length === 0) return false;
+        const min = Math.min(...numericValues);
+        
+        const valueMatch = value.match(/₹(\d+\.?\d*)L/);
+        const valueNumber = valueMatch ? parseFloat(valueMatch[1]) : Infinity;
+        
+        // Find the index of the first occurrence of the minimum value
+        const minIndex = values.findIndex(v => {
+          const match = v.match(/₹(\d+\.?\d*)L/);
+          return match && parseFloat(match[1]) === min;
+        });
+        
+        // Only highlight if this is the first occurrence of the minimum value
+        const isFirstMin = values.indexOf(value) === minIndex;
+        
+        // Debug logging for tuition fees
+        console.log('Tuition fee comparison:', {
+          value,
+          valueNumber,
+          min,
+          minIndex,
+          currentIndex: values.indexOf(value),
+          isFirstMin,
+          allValues: values,
+          numericValues,
+          isBest: valueNumber === min && valueNumber !== Infinity && min !== Infinity && isFirstMin
+        });
+        
+        // Only highlight the first occurrence of the minimum value
+        return valueNumber === min && valueNumber !== Infinity && min !== Infinity && isFirstMin;
+      } else {
+        // For other currency values, use the original logic
+        const numericValues = values.map((v) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+        const min = Math.min(...numericValues.filter((n) => !isNaN(n) && n > 0));
+        const idx = numericValues.findIndex((n) => n === min);
+        return Number.parseFloat(value.replace(/[^\d.]/g, "")) === min && values.indexOf(value) === idx;
+      }
     } else if (type === "ranking_lower_better") {
       if (value === "N/A") return false
+      
+      // Extract numeric rank values
+      const numericValues = values.map(v => {
+        if (v === "N/A") return Infinity;
+        if (v.includes("-")) {
+          return Number.parseInt(v.split("-")[0]);
+        }
+        const match = v.match(/Rank #(\d+)/);
+        return match ? Number.parseInt(match[1]) : Infinity;
+      });
+      
+      if (numericValues.length === 0) return false;
+      const min = Math.min(...numericValues);
+      
+      // Extract current value's rank
+      let currentRank = Infinity;
       if (value.includes("-")) {
-        return Number.parseInt(value.split("-")[0]) === bestValue
+        currentRank = Number.parseInt(value.split("-")[0]);
+      } else {
+        const match = value.match(/Rank #(\d+)/);
+        currentRank = match ? Number.parseInt(match[1]) : Infinity;
       }
-      return Number.parseInt(value.replace(/[^\d]/g, "")) === bestValue
+      
+      // Find the index of the first occurrence of the minimum rank
+      const minIndex = values.findIndex(v => {
+        if (v === "N/A") return false;
+        if (v.includes("-")) {
+          return Number.parseInt(v.split("-")[0]) === min;
+        }
+        const match = v.match(/Rank #(\d+)/);
+        return match && Number.parseInt(match[1]) === min;
+      });
+      
+      // Only highlight if this is the first occurrence of the minimum rank
+      const isFirstMin = values.indexOf(value) === minIndex;
+      
+      return currentRank === min && currentRank !== Infinity && min !== Infinity && isFirstMin;
     } else if (type === "ratio_lower_better") {
       return Number.parseInt(value.split(":")[1]) === bestValue
     }
@@ -1009,6 +1083,24 @@ export default function ComparisonStep({
     });
   });
 
+  // Calculate match scores for all colleges (not just selected ones)
+  const calculateMatchScores = () => {
+    const matchScores: { [collegeId: string]: string } = {};
+    colleges.forEach((college) => {
+      const score = bestCounts[college.id] || 0;
+      const totalMetrics = metricsForTheme.length;
+      matchScores[college.id] = `${score}/${totalMetrics} matches`;
+    });
+    return matchScores;
+  };
+
+  // Store match scores in localStorage so results step can access them
+  const handleBackToResults = () => {
+    const matchScores = calculateMatchScores();
+    localStorage.setItem('collegeMatchScores', JSON.stringify(matchScores));
+    onNext("results");
+  };
+
   // New: loading state for all metrics
   const allMetricsLoaded = selectedColleges.length > 0 && selectedColleges.every(college => !metricsLoading[college.id] && comparisonMetrics[college.id]);
 
@@ -1020,7 +1112,7 @@ export default function ComparisonStep({
         <div className="flex w-full justify-between items-center px-4 sm:px-8 mt-8 mb-8">
           <Button
             variant="ghost"
-            onClick={onBack}
+            onClick={handleBackToResults}
             className="hover:bg-white/50 transition-all duration-300 hover:scale-105"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -1047,16 +1139,16 @@ export default function ComparisonStep({
         </div>
         <div className="w-full max-w-2xl grid grid-cols-2 gap-4 mt-8">
           {selectedColleges.map((college) => (
-            <div key={college.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg shadow">
-              <div className={`w-10 h-10 bg-gradient-to-br ${college.color} rounded-lg flex items-center justify-center text-white font-bold text-lg`}>{college.name.charAt(0)}</div>
-              <div>
-                <div className="font-semibold text-gray-900">{college.name}</div>
-                <div className="text-xs text-gray-500">{intendedMajor && (
-                    <span className="italic text-xs text-gray-500 mt-0.5">{intendedMajor}</span>
+            <div key={college.id} className="flex items-center p-4 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200">
+              <div className="flex-1">
+                <div className="font-semibold text-gray-900 text-sm leading-tight">{college.name}</div>
+                <div className="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                  {intendedMajor && (
+                    <span className="italic text-xs text-gray-500">{intendedMajor}</span>
                   )}
                   {college.liked && (
-                    <span className="flex items-center ml-1 h-5">
-                      <Heart className="w-5 h-5 min-w-[20px] min-h-[20px] text-red-500 fill-red-500" />
+                    <span className="flex items-center">
+                      <Heart className="w-4 h-4 text-red-500 fill-red-500" />
                     </span>
                   )}
                 </div>
@@ -1129,7 +1221,7 @@ export default function ComparisonStep({
         <div className="flex items-center justify-between mb-6">
           <Button
             variant="ghost"
-            onClick={onBack}
+            onClick={handleBackToResults}
             className="hover:bg-white/50 transition-all duration-300 hover:scale-105"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -1199,20 +1291,15 @@ export default function ComparisonStep({
                     <th className="sticky left-0 z-40 bg-white text-left p-4 font-semibold min-w-[200px]">Metric</th>
                     {selectedColleges.map((college) => (
                       <th key={college.id} className="text-center p-4 font-semibold text-gray-900 min-w-[150px]">
-                        <div className="flex flex-col items-center gap-2">
-                          <div
-                            className={`w-8 h-8 bg-gradient-to-br ${college.color} rounded-lg flex items-center justify-center text-white font-bold text-sm`}
-                          >
-                            {college.name.charAt(0)}
-                          </div>
-                          <span className="text-sm flex flex-col items-center justify-center gap-1">
+                        <div className="flex flex-col items-center gap-3 p-3 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200">
+                          <span className="text-sm font-semibold text-gray-900 leading-tight text-center">
                             {college.name}
                             {intendedMajor && (
-                                <span className="italic text-xs text-gray-500 mt-0.5">{intendedMajor}</span>
+                                <span className="block italic text-xs text-gray-500 mt-1">{intendedMajor}</span>
                               )}
                             {college.liked && (
-                              <span className="flex items-center ml-1 h-5">
-                                <Heart className="w-5 h-5 min-w-[20px] min-h-[20px] text-red-500 fill-red-500" />
+                              <span className="flex items-center justify-center mt-1">
+                                <Heart className="w-4 h-4 text-red-500 fill-red-500" />
                               </span>
                             )}
                           </span>
@@ -1221,7 +1308,7 @@ export default function ComparisonStep({
                             onClick={() => onCollegeToggle(college.id)}
                             variant={college.liked ? "default" : "outline"}
                             size="sm"
-                            className={`transition-all duration-300 mt-1 ${
+                            className={`transition-all duration-300 ${
                               college.liked
                                 ? "bg-red-600 hover:bg-red-700 text-white"
                                 : "hover:bg-red-50 hover:border-red-300"
@@ -1231,7 +1318,7 @@ export default function ComparisonStep({
                             {college.liked ? "Liked" : "Like"}
                           </Button>
                           {/* Best metrics count */}
-                          <span className="text-xs font-semibold text-green-700 mt-1">
+                          <span className="text-xs font-semibold text-green-700">
                             {bestCounts[college.id]}/{metricsForTheme.length} matches
                           </span>
                         </div>
@@ -1295,16 +1382,42 @@ export default function ComparisonStep({
                           return v ?? "";
                         });
                         const isBest = isValueBest((value ?? "") as string, values, metric.type);
+                        
+                        // Debug for Annual Tuition Fees
+                        if (metric.label === "Annual Tuition Fees") {
+                          console.log('Annual Tuition Fees Debug:', {
+                            metricLabel: metric.label,
+                            metricType: metric.type,
+                            currentValue: value,
+                            allValues: values,
+                            isBest: isBest,
+                            collegeName: college.name
+                          });
+                        }
+                        
+                        // Debug for University Ranking
+                        if (metric.label === "University Ranking") {
+                          console.log('University Ranking Debug:', {
+                            metricLabel: metric.label,
+                            metricType: metric.type,
+                            currentValue: value,
+                            allValues: values,
+                            isBest: isBest,
+                            collegeName: college.name
+                          });
+                        }
+                        
                         return (
                           <td key={college.id} className="p-4 text-center">
                             <span
+                              key={`${college.id}-${metric.label}-${isBest}`}
                               className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
                                 value === "Loading..."
                                   ? "bg-gray-100 text-gray-400"
                                   : value !== "N/A"
                                   ? isBest
                                     ? "bg-green-100 text-green-900 border-2 border-green-400 shadow"
-                                    : "bg-gray-100 text-green-800 border border-green-200"
+                                    : "bg-gray-100 text-gray-800 border border-gray-200"
                                   : "bg-gray-100 text-gray-800"
                               }`}
                             >

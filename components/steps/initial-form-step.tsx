@@ -913,7 +913,7 @@ export default function InitialFormStep({
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.4, duration: 0.5 }}
             >
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Q1) What are your career aspirations after completing your masters in abroad?</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">What are your career aspirations after completing your masters in abroad?</label>
               <div className="relative mb-4">
                 <button
                   type="button"
@@ -948,7 +948,7 @@ export default function InitialFormStep({
                   </div>
                 )}
               </div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2 mt-4">Q2) Based on what parameters will you choose your College's course (any 2/3)</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 mt-4">Based on what parameters will you choose your College's course (any 2/3)</label>
               <div className="relative">
                 <button
                   type="button"

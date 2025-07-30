@@ -321,6 +321,7 @@ export default function ResultsStep({
   // Add state for notes and saved notes per college
   const [notes, setNotes] = useState<{ [collegeId: string]: string }>({});
   const [savedNotes, setSavedNotes] = useState<{ [collegeId: string]: string[] }>({});
+  const [matchScores, setMatchScores] = useState<{ [collegeId: string]: string }>({});
   // Add state for note rephrasing loading
   const [noteRephrasing, setNoteRephrasing] = useState<{ [collegeId: string]: boolean }>({});
   // Add state for note rephrasing error
@@ -417,6 +418,30 @@ export default function ResultsStep({
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile?.phone, colleges.length]);
+
+  // Load match scores from localStorage
+  useEffect(() => {
+    const storedMatchScores = localStorage.getItem('collegeMatchScores');
+    if (storedMatchScores) {
+      try {
+        const scores = JSON.parse(storedMatchScores);
+        setMatchScores(scores);
+      } catch (error) {
+        console.error('Error parsing match scores:', error);
+      }
+    }
+  }, []);
+
+  // Calculate fallback match scores for colleges not in comparison
+  const getMatchScore = (college: College) => {
+    if (matchScores[college.id]) {
+      return matchScores[college.id];
+    }
+    // Fallback: calculate a basic score based on college ranking
+    const ranking = college.ranking || 1000;
+    const score = Math.max(1, Math.floor((1000 - ranking) / 100));
+    return `${score}/14 matches`;
+  };
 
   // Helper to persist order and notes
   const persistUserCollegeData = (order: College[], notesObj: { [collegeId: string]: string[] }) => {
@@ -1589,6 +1614,9 @@ export default function ResultsStep({
                                       <span className="text-blue-700 font-normal text-sm mt-0.5" style={{ lineHeight: 1.1, wordBreak: 'break-word', whiteSpace: 'normal' }}>
                                         {college.courseName ? `(${college.courseName})` : '(Program not specified)'}
                                       </span>
+                                      <span className="text-green-700 font-semibold text-xs mt-1">
+                                        {getMatchScore(college)}
+                                      </span>
                                     </span>
                                   </div>
                                 </li>
@@ -1767,7 +1795,6 @@ export default function ResultsStep({
                                                         </div>
                                                         {/* Right: USP content */}
                                                         <div className="flex-1 flex items-center">
-                                                          <span className="mr-2 text-gray-500 font-semibold">({toRoman(globalIdx)})</span>
                                                           <span className="text-gray-800 flex-1">{item.value}</span>
                                                           <select
                                                             className="mr-2 text-xs rounded border border-gray-300 px-1 py-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
