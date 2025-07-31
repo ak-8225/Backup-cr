@@ -24,10 +24,10 @@
   },
   "6370309143": {
     "collegeOrder": [
-      "user-0",
-      "user-1",
       "user-2",
       "user-3",
+      "user-1",
+      "user-0",
       "user-4",
       "user-5",
       "user-6",
@@ -41,8 +41,12 @@
       "user-14"
     ],
     "notes": {
-      "user-0": [
-        "Apply with zero application fee of 0% for Bangor's MSc in Business Data Analytics."
+      "user-0": [],
+      "user-3": [
+        "No application fee of 0 for MSc in Business Analytics at Manchester Metropolitan University."
+      ],
+      "user-6": [
+        "Unlock a tuition-free MSc in Management (Business Analytics) at Swansea University."
       ]
     }
   }

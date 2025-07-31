@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/components/ui/use-toast"
 import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -383,11 +384,52 @@ export default function ResultsStep({
   const [noteInsertPosition, setNoteInsertPosition] = useState<{ [collegeId: string]: number }>({});
   // Add state for collapse
   const [jumpOpen, setJumpOpen] = useState(true);
+  // Add state for dynamic career outcomes data
+  const [dynamicEmploymentRate, setDynamicEmploymentRate] = useState<string>("80%");
+  const [dynamicAverageSalary, setDynamicAverageSalary] = useState<string>("₹26.3L");
+  // Add state for comparison metrics data
+  const [comparisonMetricsData, setComparisonMetricsData] = useState<{ [collegeId: string]: string }>({});
+  const [comparisonMetricsLoading, setComparisonMetricsLoading] = useState<{ [collegeId: string]: boolean }>({});
+  
+  // Get toast function
+  const { toast } = useToast();
 
-  // Update orderedColleges when colleges prop changes
+  // Helper function to check if a college has valid USPs
+  const hasValidUSPs = (college: College) => {
+    const collegeUSPs = usps[college.id];
+    if (!collegeUSPs) return true; // If USPs are still loading, consider it valid
+    
+    // Check if the USP contains a "no usp" message
+    const noUspMessages = [
+      "No USP data available",
+      "No USPs found for",
+      "Error loading USPs"
+    ];
+    
+    return !noUspMessages.some(msg => String(collegeUSPs).includes(msg));
+  };
+
+  // Update orderedColleges when colleges prop changes or when USPs load
   useEffect(() => {
+    // First, set the basic college order
     setOrderedColleges(colleges);
-  }, [colleges]);
+    
+    // Then, once USPs are loaded for all colleges, sort colleges with valid USPs to the top
+    const allUspsLoaded = colleges.every(college => usps[college.id] !== undefined);
+    if (allUspsLoaded) {
+      setOrderedColleges(prevColleges => {
+        const sortedColleges = [...prevColleges].sort((a, b) => {
+          const aHasUSPs = hasValidUSPs(a);
+          const bHasUSPs = hasValidUSPs(b);
+          
+          if (aHasUSPs && !bHasUSPs) return -1; // A has USPs, B doesn't - A goes first
+          if (!aHasUSPs && bHasUSPs) return 1;  // B has USPs, A doesn't - B goes first
+          return 0; // Both have or both don't have USPs - maintain current order
+        });
+        return sortedColleges;
+      });
+    }
+  }, [colleges, usps]);
 
   // Drag-and-drop handler
   const onDragEnd = (result: DropResult) => {
@@ -398,7 +440,39 @@ export default function ResultsStep({
       const reordered = Array.from(orderedColleges);
       const [removed] = reordered.splice(result.source.index, 1);
       reordered.splice(result.destination.index, 0, removed);
+      
+      // Save the new ordering and persist it to the database
       setOrderedColleges(reordered);
+      
+      // Notify when moving a college without USPs above ones with USPs
+      const allUspsLoaded = reordered.every(college => usps[college.id] !== undefined);
+      if (allUspsLoaded) {
+        const movedCollege = removed;
+        const movedCollegeHasNoUSP = !hasValidUSPs(movedCollege);
+        
+        // If college with no USP was moved, check if it's above colleges with USPs
+        if (movedCollegeHasNoUSP) {
+          let collegeWithUSPBelowNoUSP = false;
+          for (let i = result.destination.index + 1; i < reordered.length; i++) {
+            if (hasValidUSPs(reordered[i])) {
+              collegeWithUSPBelowNoUSP = true;
+              break;
+            }
+          }
+          
+          if (collegeWithUSPBelowNoUSP) {
+            // Inform user that colleges without USPs are usually at the bottom
+            toast({
+              title: "College order changed",
+              description: "Colleges without USPs are typically placed at the bottom of the list.",
+              duration: 3000,
+            });
+          }
+        }
+      }
+      
+      // Update order in database
+      persistUserCollegeData(reordered, savedNotes);
     }
   };
 
@@ -1539,6 +1613,136 @@ export default function ResultsStep({
     setSavedNotes(prev => ({ ...prev, [collegeId]: newNotes }));
   }
 
+  // Helper function to extract employment rate from USP text
+  function extractEmploymentRateFromUSPs(college: College): string {
+    const usps = getCurrentUSPs(college);
+    if (!usps || usps.length === 0) return "80%"; // Default fallback
+    
+    // Look for employment rate patterns in USPs
+    for (const usp of usps) {
+      // Pattern 1: "92% grads hired within 6 months"
+      const pattern1 = usp.match(/(\d+)%\s*grads?\s*hired/);
+      if (pattern1) return `${pattern1[1]}%`;
+      
+      // Pattern 2: "80% employment rate"
+      const pattern2 = usp.match(/(\d+)%\s*employment\s*rate/);
+      if (pattern2) return `${pattern2[1]}%`;
+      
+      // Pattern 3: "95% of graduates employed"
+      const pattern3 = usp.match(/(\d+)%\s*of\s*graduates?\s*employed/);
+      if (pattern3) return `${pattern3[1]}%`;
+      
+      // Pattern 4: "employment rate: 85%"
+      const pattern4 = usp.match(/employment\s*rate:\s*(\d+)%/);
+      if (pattern4) return `${pattern4[1]}%`;
+    }
+    
+    return "80%"; // Default fallback
+  }
+
+  // Helper function to get average salary for a college using the same API as comparison step
+  async function getAverageSalaryForCollege(college: College): Promise<string> {
+    // If we already have the data, return it
+    if (comparisonMetricsData[college.id]) {
+      const metricsText = comparisonMetricsData[college.id];
+      const salaryMatch = metricsText.match(/Average Starting Salary.*?:\s*([£$€]?[\d,\.]+)/i);
+      if (salaryMatch && salaryMatch[1]) {
+        return salaryMatch[1]; // Return the original format (e.g., "£22,000")
+      }
+    }
+
+    // If not loaded and not currently loading, fetch the data
+    if (!comparisonMetricsLoading[college.id]) {
+      setComparisonMetricsLoading(prev => ({ ...prev, [college.id]: true }));
+      
+      try {
+        const response = await fetch('/api/get-comparison-metrics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            college: college.name, 
+            phone: userProfile?.phone || '' 
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const metricsText = data.metrics || "";
+          
+          // Store the metrics data for future use
+          setComparisonMetricsData(prev => ({ ...prev, [college.id]: metricsText }));
+          
+          // Extract average starting salary from metrics
+          const salaryMatch = metricsText.match(/Average Starting Salary.*?:\s*([£$€]?[\d,\.]+)/i);
+          if (salaryMatch && salaryMatch[1]) {
+            return salaryMatch[1]; // Return the original format (e.g., "£22,000")
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching average salary:', error);
+      } finally {
+        setComparisonMetricsLoading(prev => ({ ...prev, [college.id]: false }));
+      }
+    }
+    
+    return "£25,000"; // Default fallback in pounds
+  }
+
+  // Proactively fetch comparison metrics data for all colleges
+  useEffect(() => {
+    colleges.forEach((college) => {
+      if (!comparisonMetricsData[college.id] && !comparisonMetricsLoading[college.id]) {
+        setComparisonMetricsLoading(prev => ({ ...prev, [college.id]: true }));
+        
+        fetch("/api/get-comparison-metrics", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ college: college.name, phone: userProfile?.phone || "" }),
+        })
+          .then(async (res) => {
+            if (!res.ok) throw new Error(await res.text());
+            return res.json();
+          })
+          .then((data) => {
+            console.log("API metrics response for", college.name, ":", data.metrics);
+            setComparisonMetricsData(prev => ({ ...prev, [college.id]: data.metrics || "" }));
+          })
+          .catch((error) => {
+            console.error('Error fetching comparison metrics for', college.name, ':', error);
+            setComparisonMetricsData(prev => ({ ...prev, [college.id]: "" }));
+          })
+          .finally(() => {
+            setComparisonMetricsLoading(prev => ({ ...prev, [college.id]: false }));
+          });
+      }
+    });
+  }, [colleges, comparisonMetricsData, comparisonMetricsLoading, userProfile?.phone]);
+
+  // Update dynamic data when dialog opens
+  useEffect(() => {
+    if (selectedCollegeForDetails && isDialogOpen) {
+      // Set employment rate from USPs
+      const employmentRate = extractEmploymentRateFromUSPs(selectedCollegeForDetails);
+      setDynamicEmploymentRate(employmentRate);
+      
+      // Check if we already have the comparison data
+      if (comparisonMetricsData[selectedCollegeForDetails.id]) {
+        const metricsText = comparisonMetricsData[selectedCollegeForDetails.id];
+        const salaryMatch = metricsText.match(/Average Starting Salary.*?:\s*([£$€]?[\d,\.]+)/i);
+        if (salaryMatch && salaryMatch[1]) {
+          setDynamicAverageSalary(salaryMatch[1]); // Use original format (e.g., "£22,000")
+        } else {
+          setDynamicAverageSalary("£25,000");
+        }
+      } else {
+        // Fetch average salary if not already loaded
+        getAverageSalaryForCollege(selectedCollegeForDetails).then(salary => {
+          setDynamicAverageSalary(salary);
+        });
+      }
+    }
+  }, [selectedCollegeForDetails, isDialogOpen, comparisonMetricsData]);
+
   return (
     <TooltipProvider>
       <motion.div
@@ -2034,11 +2238,13 @@ export default function ResultsStep({
                   <CardContent className="pl-2">
                     <div className="flex flex-row justify-between items-center mb-1">
                       <span className="text-base">Employment Rate:</span>
-                      <span className="text-green-600 font-bold text-lg">{selectedDetails.employmentRate}</span>
+                      <span className="text-green-600 font-bold text-lg">{dynamicEmploymentRate}</span>
                     </div>
                     <div className="flex flex-row justify-between items-center mb-1">
-                      <span className="text-base">Average Salary:</span>
-                      <span className="text-black font-bold text-lg">{selectedDetails.averageSalary}</span>
+                      <span className="text-base">Average Starting Salary:</span>
+                      <span className="text-black font-bold text-lg">
+                        {comparisonMetricsLoading[selectedCollegeForDetails?.id] ? "Loading..." : dynamicAverageSalary}
+                      </span>
                     </div>
                     <div className="text-sm text-gray-500 mb-2">Source: Graduate Outcomes Survey 2023</div>
                   </CardContent>

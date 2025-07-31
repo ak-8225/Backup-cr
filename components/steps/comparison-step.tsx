@@ -611,7 +611,18 @@ export default function ComparisonStep({
     if (bestValue === null) return false
 
     if (type === "percentage_higher_better" || type === "score_higher_better") {
-      return Number.parseFloat(value.replace(/[^\d.]/g, "")) === bestValue
+      const valueNumber = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+      
+      // Find the index of the first occurrence of the best value
+      const bestIndex = values.findIndex(v => {
+        const vNumber = Number.parseFloat(v.replace(/[^\d.]/g, ""));
+        return vNumber === bestValue;
+      });
+      
+      // Only highlight if this is the first occurrence of the best value
+      const isFirstBest = values.indexOf(value) === bestIndex;
+      
+      return valueNumber === bestValue && isFirstBest;
     } else if (type === "currency_lower_better") {
       // For tuition fees (values with "L per year" format), extract the lakhs value
       if (value.includes("L per year")) {
@@ -1383,29 +1394,15 @@ export default function ComparisonStep({
                         });
                         const isBest = isValueBest((value ?? "") as string, values, metric.type);
                         
-                        // Debug for Annual Tuition Fees
-                        if (metric.label === "Annual Tuition Fees") {
-                          console.log('Annual Tuition Fees Debug:', {
-                            metricLabel: metric.label,
-                            metricType: metric.type,
-                            currentValue: value,
-                            allValues: values,
-                            isBest: isBest,
-                            collegeName: college.name
-                          });
-                        }
-                        
-                        // Debug for University Ranking
-                        if (metric.label === "University Ranking") {
-                          console.log('University Ranking Debug:', {
-                            metricLabel: metric.label,
-                            metricType: metric.type,
-                            currentValue: value,
-                            allValues: values,
-                            isBest: isBest,
-                            collegeName: college.name
-                          });
-                        }
+                        // Debug for all metrics to see what's happening
+                        console.log('Metric Debug:', {
+                          metricLabel: metric.label,
+                          metricType: metric.type,
+                          currentValue: value,
+                          allValues: values,
+                          isBest: isBest,
+                          collegeName: college.name
+                        });
                         
                         return (
                           <td key={college.id} className="p-4 text-center">
