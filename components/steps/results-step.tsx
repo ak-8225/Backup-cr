@@ -1493,26 +1493,19 @@ export default function ResultsStep({
           }
         });
 
-        setSavedNotes((prev: Record<string, string[]>) => {
-          const notesArr = prev[collegeId] || [];
-          const allUSPs = getCurrentUSPs(orderedColleges.find(c => c.id === collegeId)!);
-          const combined = [
-            ...allUSPs.map(u => ({ type: 'usp', value: u })),
-            ...notesArr.map(n => ({ type: 'note', value: n }))
-          ];
-          const insertPos = noteInsertPosition[collegeId] ?? combined.length;
-          // Insert the new note at the desired position in the combined list
-          const newCombined = [
-            ...combined.slice(0, insertPos),
-            { type: 'note', value: rephrasedUsp },
-            ...combined.slice(insertPos)
-          ];
-          // Split back into usps and notes
-          const newUSPs = newCombined.filter(x => x.type === 'usp').map(x => x.value);
-          const newNotes = newCombined.filter(x => x.type === 'note').map(x => x.value);
-          setReorderedUSPs(prevUSPs => ({ ...prevUSPs, [collegeId]: newUSPs }));
-          const updated = { ...prev, [collegeId]: newNotes };
-          persistUserCollegeData(orderedColleges, updated);
+        // Add the new USP to reorderedUSPs state
+        setReorderedUSPs((prevUSPs: Record<string, string[]>) => {
+          const existingUSPs = prevUSPs[collegeId] || [];
+          const originalUSPs = getCurrentUSPs(orderedColleges.find(c => c.id === collegeId)!);
+          
+          // If we have existing reordered USPs, add to them; otherwise start with original USPs
+          const currentUSPs = existingUSPs.length > 0 ? existingUSPs : originalUSPs;
+          const newUSPs = [...currentUSPs, rephrasedUsp];
+          
+          console.log('Adding new USP:', { collegeId, currentUSPs, newUSPs });
+          
+          const updated = { ...prevUSPs, [collegeId]: newUSPs };
+          persistUserCollegeData(orderedColleges, savedNotes);
           return updated;
         });
       } else {
@@ -1586,8 +1579,21 @@ export default function ResultsStep({
 
   // Helper to get the combined list of USPs and notes for a college
   function getAllUSPsAndNotes(college: College) {
-    const usps = getCurrentUSPs(college);
+    // Get original USPs and reordered USPs
+    const originalUSPs = getCurrentUSPs(college);
+    const reorderedUSPsForCollege = reorderedUSPs[college.id] || [];
+    // Use reordered USPs if available, otherwise use original USPs
+    const usps = reorderedUSPsForCollege.length > 0 ? reorderedUSPsForCollege : originalUSPs;
     const notes = savedNotes[college.id] || [];
+    
+    console.log('getAllUSPsAndNotes:', { 
+      collegeId: college.id, 
+      originalUSPs, 
+      reorderedUSPsForCollege, 
+      usps, 
+      notes 
+    });
+    
     return [
       ...usps.map((usp, idx) => ({ type: 'usp', value: usp, idx })),
       ...notes.map((note, idx) => ({ type: 'note', value: note, idx }))
@@ -1596,10 +1602,13 @@ export default function ResultsStep({
 
   // Handler for global order change (USP or note)
   function handleGlobalUSPOrderChange(collegeId: string, globalIdx: number, newOrder: number) {
-    const usps = getCurrentUSPs(orderedColleges.find(c => c.id === collegeId)!);
+    // Get all USPs including new ones from reorderedUSPs
+    const originalUSPs = getCurrentUSPs(orderedColleges.find(c => c.id === collegeId)!);
+    const reorderedUSPsForCollege = reorderedUSPs[collegeId] || [];
+    const allUSPs = reorderedUSPsForCollege.length > 0 ? reorderedUSPsForCollege : originalUSPs;
     const notes = savedNotes[collegeId] || [];
     const all = [
-      ...usps.map((usp, idx) => ({ type: 'usp', value: usp, idx })),
+      ...allUSPs.map((usp, idx) => ({ type: 'usp', value: usp, idx })),
       ...notes.map((note, idx) => ({ type: 'note', value: note, idx }))
     ];
     if (newOrder < 0 || newOrder >= all.length) return;
@@ -2052,7 +2061,13 @@ export default function ResultsStep({
                                                     if (item.type === 'usp') {
                                                       // Find the index of this USP in the full CSV USPs for this college
                                                       const uspIdx = (csvUSPs[college.id] || []).indexOf(item.value);
-                                                      category = uspCategoryLabels[uspIdx] || '';
+                                                      if (uspIdx !== -1) {
+                                                        // This is a built-in USP from CSV
+                                                        category = uspCategoryLabels[uspIdx] || '';
+                                                      } else {
+                                                        // This is a new USP added via "Add a fact" - treat as "Key Insights"
+                                                        category = 'Key Insights';
+                                                      }
                                                     } else if (item.type === 'note') {
                                                       // For notes added via "Add a fact" feature, show "Key Insights" as category
                                                       category = 'Key Insights';

@@ -435,6 +435,32 @@ export default function ComparisonStep({
     return label.toLowerCase().replace(/[^a-z0-9]+/g, '').trim()
   }
 
+  // Function to get tuition fees from API data
+  const getTuitionFeeFromAPI = (college: any) => {
+    const metrics = comparisonMetrics[college.id];
+    if (metrics && typeof metrics === 'object') {
+      const normLabel = normalizeLabel("Annual Tuition Fees");
+      for (const key in metrics as Record<string, any>) {
+        if (normalizeLabel(key) === normLabel) {
+          const value = (metrics as Record<string, any>)[key];
+          if (value && typeof value === 'string') {
+            // Extract USD format from the API response
+            const usdMatch = value.match(/\$([\d,]+)\s*USD/);
+            if (usdMatch) {
+              return `$${usdMatch[1]} USD`;
+            }
+            // If no USD format, return the original value
+            return value;
+          }
+        }
+      }
+    }
+    // Fallback to hardcoded data if API data not available
+    const fee = findTuitionFee(college.name, tuitionFees)
+    if (fee && fee !== "N/A" && fee !== "") return fee
+    return "N/A"
+  }
+
   // Comprehensive metrics with real data from QS Rankings and official sources
   const allMetrics = {
     career: [
@@ -476,7 +502,7 @@ export default function ComparisonStep({
         label: "Annual Tuition Fees",
         // TODO: Make sure tuitionFees object is available in this scope (pass as prop or context if needed)
         values: selectedColleges.map((college) => {
-          const fee = findTuitionFee(college.name, tuitionFees)
+          const fee = getTuitionFeeFromAPI(college);
           if (fee && fee !== "N/A" && fee !== "") return fee
           // fallback to ranking if tuition fee is not available
           const rankingData = college.rankingData || { rank_value: "N/A", rank_provider_name: "N/A" }
@@ -588,8 +614,19 @@ export default function ComparisonStep({
       const numericValues = values.map((v) => Number.parseFloat(v.replace(/[^\d.]/g, "")))
       return Math.max(...numericValues)
     } else if (type === "currency_lower_better") {
-      const numericValues = values.map((v) => Number.parseFloat(v.replace(/[^\d.]/g, "")))
-      return Math.min(...numericValues)
+      // Handle different currency formats like isValueBest does
+      const numericValues = values.map((v) => {
+        if (v.includes("USD")) {
+          const match = v.match(/\$([\d,]+)\s*USD/);
+          return match ? parseFloat(match[1].replace(/,/g, '')) : Infinity;
+        } else if (v.includes("L per year")) {
+          const match = v.match(/₹(\d+\.?\d*)L/);
+          return match ? parseFloat(match[1]) : Infinity;
+        } else {
+          return Number.parseFloat(v.replace(/[^\d.]/g, ""));
+        }
+      });
+      return Math.min(...numericValues.filter(n => !isNaN(n) && n !== Infinity))
     } else if (type === "ranking_lower_better") {
       const numericValues = values.map((v) => {
         if (v === "N/A") return Number.POSITIVE_INFINITY
@@ -624,8 +661,34 @@ export default function ComparisonStep({
       
       return valueNumber === bestValue && isFirstBest;
     } else if (type === "currency_lower_better") {
-      // For tuition fees (values with "L per year" format), extract the lakhs value
-      if (value.includes("L per year")) {
+      // For tuition fees, check for USD format first (which is now being displayed), then INR format
+      if (value.includes("USD")) {
+        // Handle USD format: "$18,000 USD"
+        const numericValues = values
+          .filter(v => v.includes("USD"))
+          .map(v => {
+            const match = v.match(/\$([\d,]+)\s*USD/);
+            return match ? parseFloat(match[1].replace(/,/g, '')) : Infinity;
+          });
+        
+        if (numericValues.length === 0) return false;
+        const min = Math.min(...numericValues);
+        
+        const valueMatch = value.match(/\$([\d,]+)\s*USD/);
+        const valueNumber = valueMatch ? parseFloat(valueMatch[1].replace(/,/g, '')) : Infinity;
+        
+        // Find the index of the first occurrence of the minimum value
+        const minIndex = values.findIndex(v => {
+          const match = v.match(/\$([\d,]+)\s*USD/);
+          return match && parseFloat(match[1].replace(/,/g, '')) === min;
+        });
+        
+        // Only highlight if this is the first occurrence of the minimum value
+        const isFirstMin = values.indexOf(value) === minIndex;
+        
+        return valueNumber === min && valueNumber !== Infinity && min !== Infinity && isFirstMin;
+      } else if (value.includes("L per year")) {
+        // Handle INR format: "₹20.3L per year" (fallback)
         const numericValues = values
           .filter(v => v.includes("L per year"))
           .map(v => {
@@ -648,20 +711,6 @@ export default function ComparisonStep({
         // Only highlight if this is the first occurrence of the minimum value
         const isFirstMin = values.indexOf(value) === minIndex;
         
-        // Debug logging for tuition fees
-        console.log('Tuition fee comparison:', {
-          value,
-          valueNumber,
-          min,
-          minIndex,
-          currentIndex: values.indexOf(value),
-          isFirstMin,
-          allValues: values,
-          numericValues,
-          isBest: valueNumber === min && valueNumber !== Infinity && min !== Infinity && isFirstMin
-        });
-        
-        // Only highlight the first occurrence of the minimum value
         return valueNumber === min && valueNumber !== Infinity && min !== Infinity && isFirstMin;
       } else {
         // For other currency values, use the original logic
@@ -673,36 +722,24 @@ export default function ComparisonStep({
     } else if (type === "ranking_lower_better") {
       if (value === "N/A") return false
       
-      // Extract numeric rank values
+      // Extract numeric rank values from "Rank #XXX" format
       const numericValues = values.map(v => {
         if (v === "N/A") return Infinity;
-        if (v.includes("-")) {
-          return Number.parseInt(v.split("-")[0]);
-        }
-        const match = v.match(/Rank #(\d+)/);
-        return match ? Number.parseInt(match[1]) : Infinity;
+        const match = v.match(/Rank\s+#(\d+)/);
+        return match ? parseInt(match[1]) : Infinity;
       });
       
       if (numericValues.length === 0) return false;
       const min = Math.min(...numericValues);
       
       // Extract current value's rank
-      let currentRank = Infinity;
-      if (value.includes("-")) {
-        currentRank = Number.parseInt(value.split("-")[0]);
-      } else {
-        const match = value.match(/Rank #(\d+)/);
-        currentRank = match ? Number.parseInt(match[1]) : Infinity;
-      }
+      const match = value.match(/Rank\s+#(\d+)/);
+      const currentRank = match ? parseInt(match[1]) : Infinity;
       
       // Find the index of the first occurrence of the minimum rank
       const minIndex = values.findIndex(v => {
-        if (v === "N/A") return false;
-        if (v.includes("-")) {
-          return Number.parseInt(v.split("-")[0]) === min;
-        }
-        const match = v.match(/Rank #(\d+)/);
-        return match && Number.parseInt(match[1]) === min;
+        const match = v.match(/Rank\s+#(\d+)/);
+        return match && parseInt(match[1]) === min;
       });
       
       // Only highlight if this is the first occurrence of the minimum rank
@@ -1177,7 +1214,7 @@ export default function ComparisonStep({
     "Start Application – Shortlist is Final",
     "Revised Shortlist Discussion – Before We Apply",
     "Revised Shortlist + Document Collection",
-    "IELTS Preparation – Let’s Begin",
+    "IELTS Preparation – Let's Begin",
     "Financial Planning – Loan or Scholarship Support"
   ];
 
@@ -1374,7 +1411,13 @@ export default function ComparisonStep({
                         if (!value && !loading) {
                           value = "N/A";
                         }
-                        // Highlight if this is the best value
+                        // Force explicit highlighting logic
+                        let shouldHighlight = false;
+                        
+                        // Simple debug log to see if code is executing
+                        console.log('Highlighting logic executing for:', metric.label, 'college:', college.name);
+                        
+                        // Get all values for this metric
                         const values = selectedColleges.map((c) => {
                           const m = metricsForColleges[c.id];
                           let v: string | undefined = undefined;
@@ -1392,27 +1435,186 @@ export default function ComparisonStep({
                           }
                           return v ?? "";
                         });
-                        const isBest = isValueBest((value ?? "") as string, values, metric.type);
+                        
+                        if (value && value !== "N/A" && value !== "Loading...") {
+                          // 14 separate logics for each metric
+                          if (metric.label === "Graduate Employability Rate") {
+                            // Logic 1: Graduate Employability Rate - Higher is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const max = Math.max(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === max && !isNaN(currentValue);
+                          } else if (metric.label === "Average Starting Salary") {
+                            // Logic 2: Average Starting Salary - Higher is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const max = Math.max(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === max && !isNaN(currentValue);
+                          } else if (metric.label === "Career Progression Rate") {
+                            // Logic 3: Career Progression Rate - Higher is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const max = Math.max(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === max && !isNaN(currentValue);
+                          } else if (metric.label === "Industry Network Score") {
+                            // Logic 4: Industry Network Score - Higher is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const max = Math.max(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === max && !isNaN(currentValue);
+                          } else if (metric.label === "Annual Tuition Fees") {
+                            // Logic 5: Annual Tuition Fees - Lower is better
+                            // Find minimum USD value from API data and highlight that college's cell
+                            
+                            // Get all USD values from API data
+                            const usdValues = selectedColleges.map((c) => {
+                              const m = metricsForColleges[c.id];
+                              if (m) {
+                                const normLabel = normalizeLabel("Annual Tuition Fees");
+                                for (const key in m) {
+                                  if (normalizeLabel(key) === normLabel) {
+                                    const v = m[key];
+                                    if (v && v.includes("USD")) {
+                                      const match = v.match(/\$([\d,]+)\s*USD/);
+                                      return match ? parseFloat(match[1].replace(/,/g, '')) : Infinity;
+                                    }
+                                  }
+                                }
+                              }
+                              return Infinity;
+                            });
+                            
+                            // Find the minimum USD value
+                            const minUsdValue = Math.min(...usdValues.filter(n => !isNaN(n) && n !== Infinity));
+                            
+                            // Find which college has this minimum USD value
+                            const minUsdIndex = usdValues.findIndex(v => v === minUsdValue);
+                            
+                            // Highlight only if this college is the one with minimum USD value
+                            const currentCollegeIndex = selectedColleges.findIndex(c => c.id === college.id);
+                            shouldHighlight = currentCollegeIndex === minUsdIndex && minUsdValue !== Infinity;
+                            
+                            // Debug logging for Annual Tuition Fees
+                            console.log('Annual Tuition Fees Debug:', {
+                              usdValues: usdValues,
+                              minUsdValue: minUsdValue,
+                              minUsdIndex: minUsdIndex,
+                              currentCollegeIndex: currentCollegeIndex,
+                              shouldHighlight: shouldHighlight,
+                              collegeName: college.name,
+                              // Add more debugging info
+                              hasMetricsData: !!metricsForColleges[college.id],
+                              metricsData: metricsForColleges[college.id],
+                              allColleges: selectedColleges.map(c => c.name),
+                              currentValue: value
+                            });
+                          } else if (metric.label === "Living Costs (Annual)") {
+                            // Logic 6: Living Costs (Annual) - Lower is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const min = Math.min(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === min && !isNaN(currentValue);
+                          } else if (metric.label === "Accommodation Costs") {
+                            // Logic 7: Accommodation Costs - Lower is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const min = Math.min(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === min && !isNaN(currentValue);
+                          } else if (metric.label === "Transportation Costs") {
+                            // Logic 8: Transportation Costs - Lower is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const min = Math.min(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === min && !isNaN(currentValue);
+                          } else if (metric.label === "Scholarship Availability") {
+                            // Logic 9: Scholarship Availability - Higher is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const max = Math.max(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === max && !isNaN(currentValue);
+                          } else if (metric.label === "Total Cost of Study") {
+                            // Logic 10: Total Cost of Study - Lower is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const min = Math.min(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === min && !isNaN(currentValue);
+                          } else if (metric.label === "University Ranking") {
+                            // Logic 11: University Ranking - Lower is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => {
+                                if (v === "N/A") return Infinity;
+                                const match = v.match(/Rank\s+#(\d+)/);
+                                return match ? parseInt(match[1]) : Infinity;
+                              });
+                            const min = Math.min(...numericValues.filter((n: number) => !isNaN(n) && n !== Infinity));
+                            const currentValue = value === "N/A" ? Infinity : (value.match(/Rank\s+#(\d+)/) ? parseInt(value.match(/Rank\s+#(\d+)/)![1]) : Infinity);
+                            shouldHighlight = currentValue === min && currentValue !== Infinity;
+                          } else if (metric.label === "Student Satisfaction Score") {
+                            // Logic 12: Student Satisfaction Score - Higher is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const max = Math.max(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === max && !isNaN(currentValue);
+                          } else if (metric.label === "Research Quality Rating") {
+                            // Logic 13: Research Quality Rating - Higher is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const max = Math.max(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === max && !isNaN(currentValue);
+                          } else if (metric.label === "International Student Ratio") {
+                            // Logic 14: International Student Ratio - Higher is better
+                            const numericValues = values
+                              .filter((v: string) => v && v !== "N/A" && v !== "Loading...")
+                              .map((v: string) => Number.parseFloat(v.replace(/[^\d.]/g, "")));
+                            const max = Math.max(...numericValues.filter((n: number) => !isNaN(n)));
+                            const currentValue = Number.parseFloat(value.replace(/[^\d.]/g, ""));
+                            shouldHighlight = currentValue === max && !isNaN(currentValue);
+                          }
+                        }
                         
                         // Debug for all metrics to see what's happening
-                        console.log('Metric Debug:', {
+                        console.log('Highlighting Debug:', {
                           metricLabel: metric.label,
                           metricType: metric.type,
                           currentValue: value,
                           allValues: values,
-                          isBest: isBest,
-                          collegeName: college.name
+                          isBest: shouldHighlight,
+                          collegeName: college.name,
+                          shouldHighlight: shouldHighlight
                         });
                         
                         return (
                           <td key={college.id} className="p-4 text-center">
                             <span
-                              key={`${college.id}-${metric.label}-${isBest}`}
+                              key={`${college.id}-${metric.label}-${shouldHighlight}`}
                               className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
                                 value === "Loading..."
                                   ? "bg-gray-100 text-gray-400"
                                   : value !== "N/A"
-                                  ? isBest
+                                  ? shouldHighlight
                                     ? "bg-green-100 text-green-900 border-2 border-green-400 shadow"
                                     : "bg-gray-100 text-gray-800 border border-gray-200"
                                   : "bg-gray-100 text-gray-800"
